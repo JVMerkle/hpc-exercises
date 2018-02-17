@@ -20,7 +20,7 @@ void print_results(float array[N], int tid, int section);
 for (i=0; i<N; i++)
   a[i] = b[i] = i * 1.0;
 
-#pragma omp parallel private(i,tid,section)
+#pragma omp parallel private(i,c,tid,section)
   {
   tid = omp_get_thread_num();
   if (tid == 0)
@@ -83,8 +83,8 @@ void print_results(float array[N], int tid, int section)
     printf("\n");
   } /*** end of critical ***/
 
-  #pragma omp barrier
-  printf("Thread %d done and synchronized.\n", tid); 
+  //#pragma omp barrier
+  printf("Thread %d done.\n", tid); 
 
 }
   
