@@ -17,6 +17,10 @@ static int throw() {
 int main(int argc, char **argv) {
   int globalCount = 0, globalSamples=TRYS;
 
+	if(argc == 2)
+		omp_set_num_threads(atoi(argv[1]));
+	else
+		omp_set_num_threads(6);
 
 	#pragma omp parallel reduction(+:globalCount) 
 	{
