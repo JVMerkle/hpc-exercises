@@ -17,11 +17,16 @@ static int throw() {
 int main(int argc, char **argv) {
   int globalCount = 0, globalSamples=TRYS;
 
-	#pragma omp parallel for reduction(+:globalCount)
-  for(int i = 0; i < globalSamples; ++i) {
-		globalCount += throw();
-  }
 
+	#pragma omp parallel reduction(+:globalCount) 
+	{
+		#pragma omp for
+		for(int i = 0; i < globalSamples; ++i) {
+			globalCount += throw();
+  	}
+		printf("Hit rate of thread %d: %d\n", omp_get_thread_num(), globalCount);
+	}
+  
   double pi = 4.0 * (double)globalCount / (double)(globalSamples);
  
   printf("pi is %.9lf\n", pi);
