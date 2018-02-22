@@ -6,7 +6,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
-#include <sys/time.h>
+#include <time.h>
 
 #define calcIndex(width, x,y)  ((y)*(width) + (x))
 
@@ -121,6 +121,40 @@ void game(int w, int h) {
   free(newfield);
   
 }
+
+void meassure_time(int w, int h, int times) {
+  double *currentfield = calloc(w*h, sizeof(double));
+  double *newfield     = calloc(w*h, sizeof(double));
+
+  double cpu_time_used_total = 0;
+  for (int i = 0; i < times; i++)
+  {
+    filling(currentfield, w, h);
+
+    printf("Round %d of %d: ", i+1, times);
+    clock_t start = clock(), end;
+
+    for (int j = 0; j < TimeSteps; j++) {
+      evolve(currentfield, newfield, w, h);
+
+      //SWAP
+      double *temp = currentfield;
+      currentfield = newfield;
+      newfield = temp;
+    }
+    end = clock();
+
+    double cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    cpu_time_used_total += cpu_time_used;
+    printf("%f seconds\n", cpu_time_used);
+  }
+  
+  free(currentfield);
+  free(newfield);
+
+  printf("\n----- -----\n");
+  printf("Average: %f\n", cpu_time_used_total / times);
+}
  
 int main(int c, char **v) {
   int w = 0, h = 0;
@@ -128,5 +162,6 @@ int main(int c, char **v) {
   if (c > 2) h = atoi(v[2]); ///< read height
   if (w <= 0) w = 30; ///< default width
   if (h <= 0) h = 30; ///< default height
-  game(w, h);
+  //game(w, h);
+  meassure_time(w, h, 20);
 }
