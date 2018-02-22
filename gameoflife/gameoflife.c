@@ -60,15 +60,29 @@ void show(double* currentfield, int w, int h) {
   fflush(stdout);
 }
  
- 
+int count_living_neighbours(double *currentfield, int x, int y, int w, int h) {
+    int number = 0;
+    for (int iy = y - 1; iy <= y + 1; iy++) {
+        for (int ix = x - 1; ix <= x + 1; ix++) {
+            if (currentfield[calcIndex(w, (ix + w) % w, (iy + h) % h)] > 0) {
+                number++;
+            }
+        }
+    }
+    return number;
+} 
+
 void evolve(double* currentfield, double* newfield, int w, int h) {
   int x,y;
   for (y = 0; y < h; y++) {
     for (x = 0; x < w; x++) {
       
-      //TODO FIXME impletent rules and assign new value
+      int number = count_living_neighbours(currentfield, x, y, w, h);
+      if (currentfield[calcIndex(w, x, y)] > 0) {
+        number--;
+      }
       
-      newfield[calcIndex(w, x,y)] = !newfield[calcIndex(w, x,y)];
+      newfield[calcIndex(w, x, y)] = (number == 3 || (number == 2 && currentfield[calcIndex(w, x, y)]))? 1 : 0;
     }
   }
 }
