@@ -9,6 +9,7 @@
 #include <time.h>
 
 #define calcIndex(width, x,y)  ((y)*(width) + (x))
+#define SLICE_SIZE 30
 
 long TimeSteps = 100;
 
@@ -72,17 +73,24 @@ int count_living_neighbours(double *currentfield, int x, int y, int w, int h) {
     return number;
 } 
 
-void evolve(double* currentfield, double* newfield, int w, int h) {
-  int x,y;
-  for (y = 0; y < h; y++) {
-    for (x = 0; x < w; x++) {
-      
-      int number = count_living_neighbours(currentfield, x, y, w, h);
-      if (currentfield[calcIndex(w, x, y)] > 0) {
-        number--;
+void evolve(double* currentfield, double* newfield, int sqr_block_number, int w, int h) {
+  omp_set_num_threads(sqr_block_number * sqr_block_number);
+  #pragma omp parallel
+  {
+    int thread_num = omp_get_thread_num();
+    int offset_y = (thread_num / sqr_block_number) * SLICE_SIZE;
+    int offset_x = (thread_num % sqr_block_number) * SLICE_SIZE;
+
+    for (int y = offset_y; y < offset_y + SLICE_SIZE; y++) {
+      for (int x = offset_x; x < offset_x + SLICE_SIZE; x++) {
+        
+        int number = count_living_neighbours(currentfield, x, y, w, h);
+        if (currentfield[calcIndex(w, x, y)] > 0) {
+          number--;
+        }
+        
+        newfield[calcIndex(w, x, y)] = (number == 3 || (number == 2 && currentfield[calcIndex(w, x, y)]))? 1 : 0;
       }
-      
-      newfield[calcIndex(w, x, y)] = (number == 3 || (number == 2 && currentfield[calcIndex(w, x, y)]))? 1 : 0;
     }
   }
 }
@@ -94,7 +102,7 @@ void filling(double* currentfield, int w, int h) {
   }
 }
  
-void game(int w, int h) {
+void game(int sqr_block_number, int w, int h) {
   double *currentfield = calloc(w*h, sizeof(double));
   double *newfield     = calloc(w*h, sizeof(double));
   
@@ -104,7 +112,7 @@ void game(int w, int h) {
   long t;
   for (t=0;t<TimeSteps;t++) {
     show(currentfield, w, h);
-    evolve(currentfield, newfield, w, h);
+    evolve(currentfield, newfield, sqr_block_number, w, h);
     
     printf("%ld timestep\n",t);
     writeVTK2(t,currentfield,"gol", w, h);
@@ -122,7 +130,7 @@ void game(int w, int h) {
   
 }
 
-void measure_time(int w, int h, int times) {
+void measure_time(int sqr_block_number, int w, int h, int times) {
   double *currentfield = calloc(w*h, sizeof(double));
   double *newfield     = calloc(w*h, sizeof(double));
 
@@ -135,7 +143,7 @@ void measure_time(int w, int h, int times) {
     clock_t start = clock(), end;
 
     for (int j = 0; j < TimeSteps; j++) {
-      evolve(currentfield, newfield, w, h);
+      evolve(currentfield, newfield, sqr_block_number, w, h);
 
       //SWAP
       double *temp = currentfield;
@@ -157,11 +165,10 @@ void measure_time(int w, int h, int times) {
 }
  
 int main(int c, char **v) {
-  int w = 0, h = 0;
-  if (c > 1) w = atoi(v[1]); ///< read width
-  if (c > 2) h = atoi(v[2]); ///< read height
-  if (w <= 0) w = 30; ///< default width
-  if (h <= 0) h = 30; ///< default height
-  //game(w, h);
-  measure_time(w, h, 20);
+  int n = 0;
+  if (c > 1) n = atoi(v[1]);
+  if (n <= 0) n = 3;
+
+  game(n, n * SLICE_SIZE, n * SLICE_SIZE);
+  //measure_time(w, h, 20);
 }
