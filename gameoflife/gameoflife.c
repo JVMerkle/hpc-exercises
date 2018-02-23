@@ -122,7 +122,7 @@ void game(int w, int h) {
   
 }
 
-void meassure_time(int w, int h, int times) {
+void measure_time(int w, int h, int times) {
   double *currentfield = calloc(w*h, sizeof(double));
   double *newfield     = calloc(w*h, sizeof(double));
 
@@ -146,7 +146,7 @@ void meassure_time(int w, int h, int times) {
 
     double cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     cpu_time_used_total += cpu_time_used;
-    printf("%f seconds\n", cpu_time_used);
+    printf("%.3f ms cpu-time\n", cpu_time_used * 1000);
   }
   
   free(currentfield);
@@ -163,5 +163,5 @@ int main(int c, char **v) {
   if (w <= 0) w = 30; ///< default width
   if (h <= 0) h = 30; ///< default height
   //game(w, h);
-  meassure_time(w, h, 20);
+  measure_time(w, h, 20);
 }
