@@ -28,7 +28,7 @@ void writeVTK2(long timestep, double *data, char prefix[1024], long w, long h) {
 
   fprintf(fp, "<?xml version=\"1.0\"?>\n");
   fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
-  fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX, offsetX + w-1, offsetY, offsetY + h-1, 0, 0, deltax, deltax, 0.0);
+  fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX, offsetX + w, offsetY, offsetY + h, 0, 0, deltax, deltax, 0.0);
   fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
   fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
   fprintf(fp, "</CellData>\n");
@@ -37,9 +37,9 @@ void writeVTK2(long timestep, double *data, char prefix[1024], long w, long h) {
   fprintf(fp, "_");
   fwrite((unsigned char*)&nxy, sizeof(long), 1, fp);
 
-  for (y = 0; y < h; y++) {
+  for (y = h-1; y >= 0; y--) {
     for (x = 0; x < w; x++) {
-      float value = data[calcIndex(h, x,y)];
+      float value = data[calcIndex(w, x,y)];
       fwrite((unsigned char*)&value, sizeof(float), 1, fp);
     }
   }
@@ -117,7 +117,7 @@ void game(int sqr_block_number, int w, int h) {
     printf("%ld timestep\n",t);
     writeVTK2(t,currentfield,"gol", w, h);
     
-    usleep(200000);
+    getchar();
 
     //SWAP
     double *temp = currentfield;
