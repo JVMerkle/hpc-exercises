@@ -8,6 +8,8 @@
 #include <math.h>
 #include <time.h>
 
+#include <omp.h>
+
 #define calcIndex(width, x,y)  ((y)*(width) + (x))
 #define SLICE_SIZE 30
 
@@ -74,25 +76,21 @@ int count_living_neighbours(double *currentfield, int x, int y, int w, int h) {
 } 
 
 void evolve(double* currentfield, double* newfield, int sqr_block_number, int w, int h) {
-  omp_set_num_threads(sqr_block_number * sqr_block_number);
-  #pragma omp parallel
-  {
-    int thread_num = omp_get_thread_num();
-    int offset_y = (thread_num / sqr_block_number) * SLICE_SIZE;
-    int offset_x = (thread_num % sqr_block_number) * SLICE_SIZE;
+	int thread_num = omp_get_thread_num();
+	int offset_y = (thread_num / sqr_block_number) * SLICE_SIZE;
+	int offset_x = (thread_num % sqr_block_number) * SLICE_SIZE;
 
-    for (int y = offset_y; y < offset_y + SLICE_SIZE; y++) {
-      for (int x = offset_x; x < offset_x + SLICE_SIZE; x++) {
-        
-        int number = count_living_neighbours(currentfield, x, y, w, h);
-        if (currentfield[calcIndex(w, x, y)] > 0) {
-          number--;
-        }
-        
-        newfield[calcIndex(w, x, y)] = (number == 3 || (number == 2 && currentfield[calcIndex(w, x, y)]))? 1 : 0;
-      }
-    }
-  }
+	for (int y = offset_y; y < offset_y + SLICE_SIZE; y++) {
+		for (int x = offset_x; x < offset_x + SLICE_SIZE; x++) {
+
+			int number = count_living_neighbours(currentfield, x, y, w, h);
+			if (currentfield[calcIndex(w, x, y)] > 0) {
+				number--;
+			}
+
+			newfield[calcIndex(w, x, y)] = (number == 3 || (number == 2 && currentfield[calcIndex(w, x, y)]))? 1 : 0;
+		}
+	}
 }
  
 void filling(double* currentfield, int w, int h) {
@@ -103,65 +101,46 @@ void filling(double* currentfield, int w, int h) {
 }
  
 void game(int sqr_block_number, int w, int h) {
-  double *currentfield = calloc(w*h, sizeof(double));
-  double *newfield     = calloc(w*h, sizeof(double));
-  
-  //printf("size unsigned %d, size long %d\n",sizeof(float), sizeof(long));
-  
-  filling(currentfield, w, h);
-  long t;
-  for (t=0;t<TimeSteps;t++) {
-    show(currentfield, w, h);
-    evolve(currentfield, newfield, sqr_block_number, w, h);
-    
-    printf("%ld timestep\n",t);
-    writeVTK2(t,currentfield,"gol", w, h);
-    
-    getchar();
+	double *currentfield = calloc(w*h, sizeof(double));
+	double *newfield     = calloc(w*h, sizeof(double));
 
-    //SWAP
-    double *temp = currentfield;
-    currentfield = newfield;
-    newfield = temp;
-  }
-  
-  free(currentfield);
-  free(newfield);
-  
-}
+	filling(currentfield, w, h);
 
-void measure_time(int sqr_block_number, int w, int h, int times) {
-  double *currentfield = calloc(w*h, sizeof(double));
-  double *newfield     = calloc(w*h, sizeof(double));
+	omp_set_num_threads(sqr_block_number * sqr_block_number);
+	#pragma omp parallel
+	{
+		long t;
+		for (t=0;t<TimeSteps;t++) {
+			#pragma omp single
+			{
+				show(currentfield, w, h);
+			}
 
-  double cpu_time_used_total = 0;
-  for (int i = 0; i < times; i++)
-  {
-    filling(currentfield, w, h);
+			evolve(currentfield, newfield, sqr_block_number, w, h);
+			#pragma omp barrier
 
-    printf("Round %d of %d: ", i+1, times);
-    clock_t start = clock(), end;
+			#pragma omp single
+			{
+				printf("%ld timestep\n", t);
+				writeVTK2(t, currentfield, "gol", w, h);
+			}
 
-    for (int j = 0; j < TimeSteps; j++) {
-      evolve(currentfield, newfield, sqr_block_number, w, h);
+			usleep(200000);
 
-      //SWAP
-      double *temp = currentfield;
-      currentfield = newfield;
-      newfield = temp;
-    }
-    end = clock();
 
-    double cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-    cpu_time_used_total += cpu_time_used;
-    printf("%.3f ms cpu-time\n", cpu_time_used * 1000);
-  }
-  
-  free(currentfield);
-  free(newfield);
+			#pragma omp single
+			{
+				//SWAP
+				double *temp = currentfield;
+				currentfield = newfield;
+				newfield = temp;
+			};
+		}
+	}
 
-  printf("\n----- -----\n");
-  printf("Average: %f\n", cpu_time_used_total / times);
+	free(currentfield);
+	free(newfield);
+
 }
  
 int main(int c, char **v) {
@@ -170,5 +149,4 @@ int main(int c, char **v) {
   if (n <= 0) n = 3;
 
   game(n, n * SLICE_SIZE, n * SLICE_SIZE);
-  //measure_time(w, h, 20);
 }
