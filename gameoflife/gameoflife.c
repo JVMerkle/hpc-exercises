@@ -1,16 +1,16 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <omp.h>
-
 #ifdef _WIN32
 #include <mem.h>
 #endif
 
 #ifdef linux
-
 #include <memory.h>
-
 #endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+#include <time.h>
+#include <stdbool.h>
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
@@ -29,6 +29,8 @@ void print_field(const char *field, int width, int height);
 
 void write(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
            int offset_x, int offset_y);
+
+bool print = true;
 
 int main(int argc, char *argv[]) {
 
@@ -61,6 +63,8 @@ int main(int argc, char *argv[]) {
                 break;
             }
             blocks_y = atol(argv[i]);
+        } else if (strcmp(argv[i], "--no-print") == 0 || strcmp(argv[i], "-np") == 0) {
+            print = false;
         }
     }
 
@@ -77,6 +81,9 @@ void game(char *filename, int width, int height, int blocks_x, int blocks_y) {
     char *new_field = calloc((size_t) (total_height * total_width), sizeof(char));
     init_field(current_field, filename, total_width, total_height);
 
+    double cpu_time_used_total = 0;
+    clock_t start = clock(), end;
+
 #pragma omp parallel num_threads(blocks_x * blocks_y)
     {
         int thread_num = omp_get_thread_num();
@@ -84,9 +91,11 @@ void game(char *filename, int width, int height, int blocks_x, int blocks_y) {
         int offset_x = (thread_num % blocks_x) * width;
 
         for (int t = 0; t < TIME_STEPS; ++t) {
-#pragma omp single
-            print_field(current_field, total_width, total_height);
 
+            if(print) {
+#pragma omp single
+                print_field(current_field, total_width, total_height);
+            }
             //printf("Thread %d at subfield position %d, offset_x: %d, offset_y: %d\n", thread_num, calcIndex(total_width, offset_x, offset_y), offset_x, offset_y);
 
             evolve(current_field, new_field, total_width, total_height, offset_x, offset_y);
@@ -102,11 +111,21 @@ void game(char *filename, int width, int height, int blocks_x, int blocks_y) {
                 current_field = new_field;
                 new_field = tmp;
 
-                printf("Time step: %d", t);
-                getchar();
+                end = clock();
+                double cpu_time_used = ((end - start) * 1000.0) / CLOCKS_PER_SEC;
+                cpu_time_used_total += cpu_time_used;
+
+                printf("Time step: %d CPU time: %.3f ms\n", t, cpu_time_used);
+                if(print) {
+                    getchar();
+                }
+                start = clock();
             }
         }
     }
+
+    printf("\n----- -----\n");
+    printf("Average CPU time: %.3f ms\n", cpu_time_used_total / TIME_STEPS);
 }
 
 void write(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
