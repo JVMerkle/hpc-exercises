@@ -1,153 +1,204 @@
-#include <endian.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-#include <string.h>
-#include <stdbool.h>
-#include <math.h>
-#include <time.h>
-
 #include <omp.h>
 
-#define calcIndex(width, x,y)  ((y)*(width) + (x))
-#define SLICE_SIZE 30
+#ifdef _WIN32
+#include <mem.h>
+#endif
 
-long TimeSteps = 100;
+#ifdef linux
 
-void writeVTK2(char filename[2048], double *data, char prefix[1024], long w, long h) {
-  int x,y;
-  
-  long offsetX=0;
-  long offsetY=0;
-  float deltax=1.0;
-  float deltay=1.0;
-  long  nxy = w * h * sizeof(float);  
+#include <memory.h>
 
-  FILE* fp = fopen(filename, "w");
+#endif
 
-  fprintf(fp, "<?xml version=\"1.0\"?>\n");
-  fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
-  fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX, offsetX + w, offsetY, offsetY + h, 0, 0, deltax, deltay, 0.0);
-  fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
-  fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
-  fprintf(fp, "</CellData>\n");
-  fprintf(fp, "</ImageData>\n");
-  fprintf(fp, "<AppendedData encoding=\"raw\">\n");
-  fprintf(fp, "_");
-  fwrite((unsigned char*)&nxy, sizeof(long), 1, fp);
+#define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-  for (y = h-1; y >= 0; y--) {
-    for (x = 0; x < w; x++) {
-      float value = data[calcIndex(w, x,y)];
-      fwrite((unsigned char*)&value, sizeof(float), 1, fp);
+#define TIME_STEPS 100
+
+void game(char *filename, int width, int height, int blocks_x, int blocks_y);
+
+char *init_field(char *current_field, char *filename, int width, int height);
+
+void
+evolve(const char *current_field, char *new_field, int total_width, int total_height, int offset_x, int offset_y);
+
+int count_living_neighbours(const char *field, int x, int y, int width, int height);
+
+void print_field(const char *field, int width, int height);
+
+void write(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
+           int offset_x, int offset_y);
+
+int main(int argc, char *argv[]) {
+
+    char *filename = "";
+    int width = 10, height = 10, blocks_x = 3, blocks_y = 3;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-i") == 0) {
+            i++;
+            if (i >= argc) {
+                fprintf(stderr, "ERROR: Missing file parameter");
+                return 1;
+            }
+            filename = argv[i];
+        } else if (strcmp(argv[i], "-s") == 0) {
+            i++;
+            width = atol(argv[i]);
+            i++;
+            if (i >= argc) {
+                height = width;
+                break;
+            }
+            height = atol(argv[i]);
+        } else if (strcmp(argv[i], "-b") == 0) {
+            i++;
+            blocks_x = atol(argv[i]);
+            i++;
+            if (i >= argc) {
+                blocks_y = blocks_y;
+                break;
+            }
+            blocks_y = atol(argv[i]);
+        }
     }
-  }
-  
-  fprintf(fp, "\n</AppendedData>\n");
-  fprintf(fp, "</VTKFile>\n");
-  fclose(fp);
+
+    game(filename, width, height, blocks_x, blocks_y);
+
+    return 0;
 }
 
+void game(char *filename, int width, int height, int blocks_x, int blocks_y) {
+    int total_width = width * blocks_x;
+    int total_height = height * blocks_y;
 
-void show(double* currentfield, int w, int h) {
-  printf("\033[H");
-  int x,y;
-  for (y = 0; y < h; y++) {
-    for (x = 0; x < w; x++) printf(currentfield[calcIndex(w, x,y)] ? "\033[07m  \033[m" : "  ");
-    //printf("\033[E");
-    printf("\n");
-  }
-  fflush(stdout);
+    char *current_field = calloc((size_t) (total_height * total_width), sizeof(char));
+    char *new_field = calloc((size_t) (total_height * total_width), sizeof(char));
+    init_field(current_field, filename, total_width, total_height);
+
+#pragma omp parallel num_threads(blocks_x * blocks_y)
+    {
+        int thread_num = omp_get_thread_num();
+        int offset_y = (thread_num / blocks_y) * height;
+        int offset_x = (thread_num % blocks_x) * width;
+
+        for (int t = 0; t < TIME_STEPS; ++t) {
+#pragma omp single
+            print_field(current_field, total_width, total_height);
+
+            //printf("Thread %d at subfield position %d, offset_x: %d, offset_y: %d\n", thread_num, calcIndex(total_width, offset_x, offset_y), offset_x, offset_y);
+
+            evolve(current_field, new_field, total_width, total_height, offset_x, offset_y);
+
+            char thread_filename[2048];
+            snprintf(thread_filename, sizeof(thread_filename), "t%d-%05d%s", thread_num, t, ".vti");
+            write(thread_filename, current_field, width, height, total_width, total_height, offset_x, offset_y);
+
+#pragma omp barrier
+#pragma omp single
+            {
+                char *tmp = current_field;
+                current_field = new_field;
+                new_field = tmp;
+
+                printf("Time step: %d", t);
+                getchar();
+            }
+        }
+    }
 }
- 
-int count_living_neighbours(double *currentfield, int x, int y, int w, int h) {
+
+void write(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
+           int offset_x, int offset_y) {
+    int x, y;
+    float deltax = 1.0;
+    float deltay = 1.0;
+    long nxy = total_width * total_height * sizeof(float);
+
+    FILE *fp = fopen(filename, "w");
+
+    fprintf(fp, "<?xml version=\"1.0\"?>\n");
+    fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
+    fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offset_x,
+            offset_x + block_width, total_height - offset_y - block_height, total_height - offset_y, 0, 0, deltax,
+            deltay, 0.0);
+    fprintf(fp, "<CellData Scalars=\"%s\">\n", "th");
+    fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", "th");
+    fprintf(fp, "</CellData>\n");
+    fprintf(fp, "</ImageData>\n");
+    fprintf(fp, "<AppendedData encoding=\"raw\">\n");
+    fprintf(fp, "_");
+    fwrite((unsigned char *) &nxy, sizeof(long), 1, fp);
+
+    for (y = offset_y + block_height - 1; y >= offset_y; y--) {
+        for (x = offset_x; x < offset_x + block_width; x++) {
+            float value = field[calcIndex(total_width, x, y)];
+            fwrite((unsigned char *) &value, sizeof(float), 1, fp);
+        }
+    }
+
+    fprintf(fp, "\n</AppendedData>\n");
+    fprintf(fp, "</VTKFile>\n");
+    fclose(fp);
+}
+
+void
+evolve(const char *current_field, char *new_field, int total_width, int total_height, int offset_x, int offset_y) {
+    for (int y = offset_y; y < total_height; ++y) {
+        for (int x = offset_x; x < total_width; ++x) {
+            int index = calcIndex(total_width, x, y);
+            int neighbours = count_living_neighbours(current_field, x, y, total_width, total_height);
+            new_field[index] = (neighbours == 3 || (neighbours == 2 && current_field[index]));
+        }
+    }
+}
+
+int count_living_neighbours(const char *field, int x, int y, int width, int height) {
     int number = 0;
     for (int iy = y - 1; iy <= y + 1; iy++) {
         for (int ix = x - 1; ix <= x + 1; ix++) {
-            if (currentfield[calcIndex(w, (ix + w) % w, (iy + h) % h)] > 0) {
+            if (field[calcIndex(width, (ix + width) % width, (iy + height) % height)] > 0) {
                 number++;
             }
         }
     }
-    return number;
-} 
-
-void evolve(double* currentfield, double* newfield, int w, int h) {
-	for (int y = 0; y < SLICE_SIZE; y++) {
-		for (int x = 0; x < SLICE_SIZE; x++) {
-
-			int number = count_living_neighbours(currentfield, x, y, w, h);
-			if (currentfield[calcIndex(w, x, y)] > 0) {
-				number--;
-			}
-
-			newfield[calcIndex(w, x, y)] = (number == 3 || (number == 2 && currentfield[calcIndex(w, x, y)]))? 1 : 0;
-		}
-	}
+    return number - field[calcIndex(width, x, y)];
 }
- 
-void filling(double* currentfield, int w, int h) {
-  int i;
-  for (i = 0; i < h*w; i++) {
-    currentfield[i] = (rand() < RAND_MAX / 10) ? 1 : 0; ///< init domain randomly
-  }
+
+char *init_field(char *current_field, char *filename, int width, int height) {
+    if (filename != "") {
+        FILE *fp;
+        fp = fopen(filename, "r");
+
+        if (fp != NULL) {
+            for (int y = 0; y < height; ++y) {
+                char *line = NULL;
+                size_t len = 0;
+                ssize_t read = getline(&line, &len, fp);
+
+                for (int x = 0; x < width; ++x) {
+                    current_field[calcIndex(width, x, y)] = (char) (x < read && (line[x] == 'X' || line[x] == 'x') ? 1
+                                                                                                                   : 0); //TODO: Is cast necessary
+                }
+            }
+        } else {
+            fprintf(stderr, "WARNING: Could not open file");
+        }
+    } else {
+        for (int i = 0; i < width * height; i++) {
+            current_field[i] = (char) ((rand() < RAND_MAX / 10) ? 1 : 0);
+        }
+    }
+
+    return calloc(10, sizeof(char));
 }
- 
-void game(int sqr_block_number, int w, int h) {
-	double *currentfield = calloc(w*h, sizeof(double));
-	double *newfield     = calloc(w*h, sizeof(double));
 
-	filling(currentfield, w, h);
-
-	omp_set_num_threads(sqr_block_number * sqr_block_number);
-	#pragma omp parallel
-	{
-        int thread_num = omp_get_thread_num();
-        int offset_y = (thread_num / sqr_block_number) * SLICE_SIZE;
-        int offset_x = (thread_num % sqr_block_number) * SLICE_SIZE;
-
-		long t;
-		for (t=0;t<TimeSteps;t++) {
-			#pragma omp single
-			{
-				show(currentfield, w, h);
-			}
-
-            int index = calcIndex(w, offset_x, offset_y);
-
-            evolve(&currentfield[index], newfield, w, h);
-			#pragma omp barrier
-
-            printf("%ld timestep\n", t);
-            char filename[2048];
-            snprintf(filename, sizeof(filename), "t%d-%05ld%s", thread_num, t, ".vti");
-
-
-            writeVTK2(filename, currentfield, "gol", w, h);
-
-			getchar();
-
-
-			#pragma omp single
-			{
-				//SWAP
-				double *temp = currentfield;
-				currentfield = newfield;
-				newfield = temp;
-			};
-		}
-	}
-
-	free(currentfield);
-	free(newfield);
-
-}
- 
-int main(int c, char **v) {
-  int n = 0;
-  if (c > 1) n = atoi(v[1]);
-  if (n <= 0) n = 3;
-
-  game(n, n * SLICE_SIZE, n * SLICE_SIZE);
+void print_field(const char *field, int width, int height) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            printf("%c", field[calcIndex(width, x, y)] ? 'X' : ' ');
+        }
+        printf("|\n");
+    }
 }
