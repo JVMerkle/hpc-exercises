@@ -21,7 +21,7 @@ void game(char *filename, int width, int height, int blocks_x, int blocks_y);
 char *init_field(char *current_field, char *filename, int width, int height);
 
 void
-evolve(const char *current_field, char *new_field, int total_width, int total_height, int offset_x, int offset_y);
+evolve(const char *current_field, char *new_field, int block_width, int block_height, int total_width, int total_height, int offset_x, int offset_y);
 
 int count_living_neighbours(const char *field, int x, int y, int width, int height);
 
@@ -98,11 +98,11 @@ void game(char *filename, int width, int height, int blocks_x, int blocks_y) {
             }
             //printf("Thread %d at subfield position %d, offset_x: %d, offset_y: %d\n", thread_num, calcIndex(total_width, offset_x, offset_y), offset_x, offset_y);
 
-            evolve(current_field, new_field, total_width, total_height, offset_x, offset_y);
+            evolve(current_field, new_field, width, height, total_width, total_height, offset_x, offset_y);
 
             char thread_filename[2048];
             snprintf(thread_filename, sizeof(thread_filename), "t%d-%05d%s", thread_num, t, ".vti");
-            write(thread_filename, current_field, width, height, total_width, total_height, offset_x, offset_y);
+            //write(thread_filename, current_field, width, height, total_width, total_height, offset_x, offset_y);
 
 #pragma omp barrier
 #pragma omp single
@@ -163,9 +163,9 @@ void write(char *filename, const char *field, int block_width, int block_height,
 }
 
 void
-evolve(const char *current_field, char *new_field, int total_width, int total_height, int offset_x, int offset_y) {
-    for (int y = offset_y; y < total_height; ++y) {
-        for (int x = offset_x; x < total_width; ++x) {
+evolve(const char *current_field, char *new_field, int block_width, int block_height, int total_width, int total_height, int offset_x, int offset_y) {
+    for (int y = offset_y; y < offset_y + block_height; ++y) {
+        for (int x = offset_x; x < offset_x + block_width; ++x) {
             int index = calcIndex(total_width, x, y);
             int neighbours = count_living_neighbours(current_field, x, y, total_width, total_height);
             new_field[index] = (neighbours == 3 || (neighbours == 2 && current_field[index]));
