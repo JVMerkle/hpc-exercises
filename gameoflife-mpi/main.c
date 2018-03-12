@@ -10,21 +10,16 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &comm_rank);
 
-    int height = 30, width = 30, argumentnr = 1;
+    int height = 30, width, argumentnr = 1;
 
     // Parse Height
-    if(argumentnr < sizeof(argv)){
-        height = atol(argv[argumentnr]);
+    if(argumentnr < argc){
+        height = atoi(argv[argumentnr]);
         argumentnr++;
     }
 
     // Parse Width - if non existing set width equal to height
-    if(argumentnr < sizeof(argv)){
-        width = atol(argv[argumentnr]);
-    } else {
-        width = height;
-    }
-    argumentnr++;
+    width = argumentnr < argc ? atoi(argv[argumentnr]) : height;
 
 
     int total_length = height * comm_size;
