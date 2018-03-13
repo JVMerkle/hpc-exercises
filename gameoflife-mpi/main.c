@@ -12,17 +12,20 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(comm, &comm_world_rank);
 
     // ----- Create own gol communicator -----
-    MPI_Comm comm_gol_comm;
+    MPI_Comm comm_gol;
     int dims = {comm_world_size};
     int periods = {true};
-    int a = MPI_Cart_create(comm, 1, &dims, &periods, false, &comm_gol_comm);
+    MPI_Cart_create(comm, 1, &dims, &periods, false, &comm_gol);
     
     int comm_gol_rank, comm_gol_size;
     MPI_Comm_size(comm, &comm_gol_size);
     MPI_Comm_rank(comm, &comm_gol_rank);
 
     // ----- Find Neighbours -----
-    //TODO: Implement
+    int next_neighbour;
+    int previous_neighbour;
+    MPI_Cart_shift(comm_gol, 0, 1, &previous_neighbour, &next_neighbour);
+
 
     // ----- Parse Inputs -----
     int height = 30, width, argumentnr = 1;
@@ -42,8 +45,9 @@ int main(int argc, char *argv[]) {
     int offset_start = partition * comm_gol_rank;
     int offset_end = (offset_start + partition < total_length)? offset_start + partition -1 : total_length -1;
 
-    printf("[INIT] Process %d of %d started with size of %dx%d - assigned partition %d-%d\n",
-           comm_gol_rank, comm_gol_size, height, width, offset_start, offset_end);
+    printf("[INIT] Process %d of %d started with size of %dx%d - assigned partition %d-%d next rank: %d previous rank: %d\n",
+           comm_gol_rank, comm_gol_size, height, width, offset_start, offset_end,
+           next_neighbour, previous_neighbour);
 
 
 
