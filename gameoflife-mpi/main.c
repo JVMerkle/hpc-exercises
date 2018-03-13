@@ -9,9 +9,9 @@
 void writeVTK(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
            int offset_x, int offset_y);
 
-void *init_field(int rank, char *current_field, int width, int height) {
+void *init_field(int rank, char *current_field, int length) {
     srand(rank*time(NULL));
-    for (int i = width; i < width * (height - 2); i++) {
+    for (int i = 0; i < length; i++) {
         current_field[i] = (char) ((rand() < RAND_MAX / 10) ? 1 : 0);
     }
 }
@@ -66,11 +66,11 @@ int main(int argc, char *argv[]) {
     char *currentField = calloc((size_t) proc_area + 2 * width, sizeof(char));
     char *nextField = calloc((size_t) proc_area + 2 * width, sizeof(char));
 
-    init_field(comm_gol_rank, currentField, width, proc_height + 2);
+    init_field(comm_gol_rank, currentField + width, proc_area);
 
     char thread_filename[2048];
     snprintf(thread_filename, sizeof(thread_filename), "gol-%05d-r%d%s", 0, comm_gol_rank, ".vti");
-    writeVTK(thread_filename, currentField, width, proc_height, width, height, 0, comm_gol_rank * proc_height);
+    writeVTK(thread_filename, currentField + width, width, proc_height, width, height, 0, comm_gol_rank * proc_height);
 
     MPI_Finalize();
     return 0;
@@ -99,7 +99,7 @@ void writeVTK(char *filename, const char *field, int block_width, int block_heig
     fprintf(fp, "_");
     fwrite((unsigned char *) &nxy, sizeof(long), 1, fp);
 
-    for (y = block_height; y >= 1; y--) {
+    for (y = block_height - 1; y >= 0; y--) {
         for (x = 0; x < block_width; x++) {
             float value = field[calcIndex(total_width, x, y)];
             fwrite((unsigned char *) &value, sizeof(float), 1, fp);
