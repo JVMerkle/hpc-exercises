@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
     width = argumentnr < argc ? atoi(argv[argumentnr]) : height;
 
     // -----  -----
-    int total_length = height * comm_gol_size;
+    int total_length = height * width;
     int partition = total_length / comm_gol_size;
     int offset_start = partition * comm_gol_rank;
     int offset_end = (offset_start + partition < total_length)? offset_start + partition -1 : total_length -1;
