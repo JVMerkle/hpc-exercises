@@ -7,8 +7,13 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
+void evolve(const char *current_field, char *new_field, int block_width, int block_height, int width,
+            int height, int offset_x, int offset_y);
+
 void writeVTK(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
            int offset_x, int offset_y);
+
+int count_living_neighbours(const char *field, int x, int y, int width, int height) ;
 
 void *init_field(int rank, char *current_field, int length) {
     srand(rank*time(NULL));
@@ -16,6 +21,7 @@ void *init_field(int rank, char *current_field, int length) {
         current_field[i] = (char) ((rand() < RAND_MAX / 10) ? 1 : 0);
     }
 }
+
 
 int main(int argc, char *argv[]) {
     int comm_world_rank, comm_world_size;
@@ -30,7 +36,7 @@ int main(int argc, char *argv[]) {
     int dims = {comm_world_size};
     int periods = {true};
     MPI_Cart_create(comm, 1, &dims, &periods, false, &comm_gol);
-    
+
     int comm_gol_rank, comm_gol_size;
     MPI_Comm_size(comm, &comm_gol_size);
     MPI_Comm_rank(comm, &comm_gol_rank);
@@ -69,43 +75,72 @@ int main(int argc, char *argv[]) {
 
     init_field(comm_gol_rank, currentField + width, proc_area);
 
-    // ----- Exchange ghost layer -----
-    // Send to next neighbour
-    MPI_Request send_next_request;
-    char *send_next_buffer = currentField + proc_height * width;
-    MPI_Isend(send_next_buffer, width, MPI_CHAR, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1, 1000, comm_gol, &send_next_request);
+    for (int i = 0; i < 3; ++i) {
 
-    // Send to previous neighbour
-    MPI_Request send_previous_request;
-    char *send_previous_buffer = currentField + proc_height * width;
-    MPI_Isend(send_previous_buffer, width, MPI_CHAR, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1, 2000, comm_gol, &send_previous_request);
-    printf("[DEBUG P:%d] Invoked sending to: %d\n", comm_gol_rank, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1);
+        // ----- Exchange ghost layer -----
+        // Send to next neighbour
+        MPI_Request send_next_request;
+        char *send_next_buffer = currentField + proc_height * width;
+        MPI_Isend(send_next_buffer, width, MPI_CHAR, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1, 1000, comm_gol, &send_next_request);
 
-    // Receive from previous neighbour
-    MPI_Status receive_previous_status;
-    char *receive_previous_buffer = calloc((size_t) width, sizeof(char));
-    MPI_Recv(receive_previous_buffer, width, MPI_CHAR, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1, 1000, comm_gol, &receive_previous_status);
+        // Send to previous neighbour
+        MPI_Request send_previous_request;
+        char *send_previous_buffer = currentField + proc_height * width;
+        MPI_Isend(send_previous_buffer, width, MPI_CHAR, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1, 2000, comm_gol, &send_previous_request);
+        //printf("[DEBUG P:%d] Invoked sending to: %d\n", comm_gol_rank, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1);
 
-    memcpy(currentField, receive_previous_buffer, (size_t) width);
+        // Receive from previous neighbour
+        MPI_Status receive_previous_status;
+        char *receive_previous_buffer = calloc((size_t) width, sizeof(char));
+        MPI_Recv(receive_previous_buffer, width, MPI_CHAR, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1, 1000, comm_gol, &receive_previous_status);
 
-    // Receive from next neighbour
-    MPI_Status receive_next_status;
-    char *receive_next_buffer = calloc((size_t) width, sizeof(char));
-    MPI_Recv(receive_next_buffer, width, MPI_CHAR, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1, 2000, comm_gol, &receive_next_status);
-    printf("[DEBUG P:%d] Message received from %d\n", comm_gol_rank, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1);
+        memcpy(currentField, receive_previous_buffer, (size_t) width);
 
-    memcpy(currentField + (proc_height + 1) * width, receive_next_buffer, (size_t) width);
+        // Receive from next neighbour
+        MPI_Status receive_next_status;
+        char *receive_next_buffer = calloc((size_t) width, sizeof(char));
+        MPI_Recv(receive_next_buffer, width, MPI_CHAR, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1, 2000, comm_gol, &receive_next_status);
+        //printf("[DEBUG P:%d] Message received from %d\n", comm_gol_rank, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1);
 
+        memcpy(currentField + (proc_height + 1) * width, receive_next_buffer, (size_t) width);
 
-    // ----- Write VTK files -----
-    char thread_filename[2048];
-    snprintf(thread_filename, sizeof(thread_filename), "gol-%05d-r%d%s", 0, comm_gol_rank, ".vti");
-    writeVTK(thread_filename, currentField + width, width, proc_height, width, height, 0, comm_gol_rank * proc_height);
+        // ----- Write VTK files -----
+        char thread_filename[2048];
+        snprintf(thread_filename, sizeof(thread_filename), "gol-%05d-r%d%s", i, comm_gol_rank, ".vti");
+        writeVTK(thread_filename, currentField + width, width, proc_height, width, height, 0, comm_gol_rank * proc_height);
+
+        // ----- evolve -----
+        evolve(currentField, nextField, width, proc_height, width, proc_height + 2, 0, 1);
+        char *tmp = currentField;
+        currentField = nextField;
+        nextField = tmp;
+    }
 
     MPI_Finalize();
     return 0;
 }
 
+void evolve(const char *current_field, char *new_field, int block_width, int block_height, int total_width, int total_height, int offset_x, int offset_y) {
+    for (int y = offset_y; y < offset_y + block_height; ++y) {
+        for (int x = offset_x; x < offset_x + block_width; ++x) {
+            int index = calcIndex(total_width, x, y);
+            int neighbours = count_living_neighbours(current_field, x, y, total_width, total_height);
+            new_field[index] = (neighbours == 3 || (neighbours == 2 && current_field[index]));
+        }
+    }
+}
+
+int count_living_neighbours(const char *field, int x, int y, int width, int height) {
+    int number = 0;
+    for (int iy = y - 1; iy <= y + 1; iy++) {
+        for (int ix = x - 1; ix <= x + 1; ix++) {
+            if (field[calcIndex(width, (ix + width) % width, (iy + height) % height)] > 0) {
+                number++;
+            }
+        }
+    }
+    return number - field[calcIndex(width, x, y)];
+}
 
 void writeVTK(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
            int offset_x, int offset_y) {
