@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <memory.h>
 #include "mpi.h"
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
@@ -68,6 +69,35 @@ int main(int argc, char *argv[]) {
 
     init_field(comm_gol_rank, currentField + width, proc_area);
 
+    // ----- Exchange ghost layer -----
+    // Send to next neighbour
+    MPI_Request send_next_request;
+    char *send_next_buffer = currentField + proc_height * width;
+    MPI_Isend(send_next_buffer, width, MPI_CHAR, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1, 1000, comm_gol, &send_next_request);
+
+    // Send to previous neighbour
+    MPI_Request send_previous_request;
+    char *send_previous_buffer = currentField + proc_height * width;
+    MPI_Isend(send_previous_buffer, width, MPI_CHAR, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1, 2000, comm_gol, &send_previous_request);
+    printf("[DEBUG P:%d] Invoked sending to: %d\n", comm_gol_rank, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1);
+
+    // Receive from previous neighbour
+    MPI_Status receive_previous_status;
+    char *receive_previous_buffer = calloc((size_t) width, sizeof(char));
+    MPI_Recv(receive_previous_buffer, width, MPI_CHAR, comm_gol_rank - 1 < 0 ? comm_gol_size - 1 : comm_gol_rank - 1, 1000, comm_gol, &receive_previous_status);
+
+    memcpy(currentField, receive_previous_buffer, (size_t) width);
+
+    // Receive from next neighbour
+    MPI_Status receive_next_status;
+    char *receive_next_buffer = calloc((size_t) width, sizeof(char));
+    MPI_Recv(receive_next_buffer, width, MPI_CHAR, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1, 2000, comm_gol, &receive_next_status);
+    printf("[DEBUG P:%d] Message received from %d\n", comm_gol_rank, comm_gol_rank + 1 >= comm_gol_size? 0 : comm_gol_rank + 1);
+
+    memcpy(currentField + (proc_height + 1) * width, receive_next_buffer, (size_t) width);
+
+
+    // ----- Write VTK files -----
     char thread_filename[2048];
     snprintf(thread_filename, sizeof(thread_filename), "gol-%05d-r%d%s", 0, comm_gol_rank, ".vti");
     writeVTK(thread_filename, currentField + width, width, proc_height, width, height, 0, comm_gol_rank * proc_height);
