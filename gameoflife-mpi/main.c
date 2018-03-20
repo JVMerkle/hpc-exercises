@@ -7,7 +7,7 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-void evolve(const char *current_field, char *new_field, int block_width, int block_height, int width,
+bool evolve(const char *current_field, char *new_field, int block_width, int block_height, int width,
             int height, int offset_x, int offset_y);
 
 void writeVTK(char *filename, const char *field, int block_width, int block_height, int total_width, int total_height,
@@ -74,8 +74,9 @@ int main(int argc, char *argv[]) {
     char *nextField = calloc((size_t) proc_area + 2 * width, sizeof(char));
 
     init_field(comm_gol_rank, currentField + width, proc_area);
-
-    for (int i = 0; i < 60; ++i) {
+    bool run = true;
+    int i = 0;
+    for (; run && i < 100; ++i) {
 
         // ----- Exchange ghost layer -----
         // Send to next neighbour
@@ -110,24 +111,43 @@ int main(int argc, char *argv[]) {
         writeVTK(thread_filename, currentField + width, width, proc_height, width, height, 0, comm_gol_rank * proc_height);
 
         // ----- evolve -----
-        evolve(currentField, nextField, width, proc_height, width, proc_height + 2, 0, 1);
+        bool change = evolve(currentField, nextField, width, proc_height, width, proc_height + 2, 0, 1);
         char *tmp = currentField;
         currentField = nextField;
         nextField = tmp;
+
+        // ----- exchange change -----
+        bool *send_change_buffer = calloc((size_t) 1, sizeof(bool));
+        send_change_buffer[0] = change;
+        bool *receive_change_buffer = calloc((size_t) comm_gol_size, sizeof(bool));
+        MPI_Allgather(send_change_buffer, 1, MPI_C_BOOL, receive_change_buffer, 1, MPI_C_BOOL, comm_gol);
+        run = false;
+        for (int j = 0; j < comm_gol_size; ++j) {
+            if(receive_change_buffer[j]) {
+                run = true;
+                break;
+            }
+        }
     }
+
+    printf("[DEBUG P:%d] Finished after %d steps\n", comm_gol_rank, i);
 
     MPI_Finalize();
     return 0;
 }
 
-void evolve(const char *current_field, char *new_field, int block_width, int block_height, int total_width, int total_height, int offset_x, int offset_y) {
+bool evolve(const char *current_field, char *new_field, int block_width, int block_height, int total_width,
+            int total_height, int offset_x, int offset_y) {
+    bool change = false;
     for (int y = offset_y; y < offset_y + block_height; ++y) {
         for (int x = offset_x; x < offset_x + block_width; ++x) {
             int index = calcIndex(total_width, x, y);
             int neighbours = count_living_neighbours(current_field, x, y, total_width, total_height);
             new_field[index] = (neighbours == 3 || (neighbours == 2 && current_field[index]));
+            if(!change && new_field[index] != current_field[index]) change = true;
         }
     }
+    return change;
 }
 
 int count_living_neighbours(const char *field, int x, int y, int width, int height) {
