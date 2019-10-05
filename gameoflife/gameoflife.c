@@ -194,7 +194,7 @@ char *init_field(char *current_field, char *filename, int width, int height) {
             for (int y = 0; y < height; ++y) {
                 char *line = NULL;
                 size_t len = 0;
-                ssize_t read = getline(&line, &len, fp);
+                size_t read = getline(&line, &len, fp);
 
                 for (int x = 0; x < width; ++x) {
                     current_field[calcIndex(width, x, y)] = (char) (x < read && (line[x] == 'X' || line[x] == 'x') ? 1
