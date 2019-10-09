@@ -1,0 +1,10 @@
+cmake_minimum_required (VERSION 2.6)
+
+add_subdirectory(error1)
+add_subdirectory(error2)
+add_subdirectory(gameoflife)
+add_subdirectory(gameoflife-mpi)
+add_subdirectory(hello-world)
+add_subdirectory(parallestack)
+add_subdirectory(philosophen)
+add_subdirectory(pi)
