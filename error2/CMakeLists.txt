@@ -3,5 +3,5 @@ project (Error2 C)
 
 set(CMAKE_C_FLAGS "-std=c99 -fopenmp")
 
-add_executable(Error2 error2.c)
+add_executable(Error2 main.c)
 target_link_libraries(Error2 c)

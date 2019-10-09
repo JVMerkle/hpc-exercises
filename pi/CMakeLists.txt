@@ -3,5 +3,5 @@ project (Pi C)
 
 set(CMAKE_C_FLAGS "-std=c99 -fopenmp")
 
-add_executable(Pi pi.c)
+add_executable(Pi main.c)
 target_link_libraries(Pi c)
